@@ -2,11 +2,34 @@ from fastapi import FastAPI, Request, HTTPException, Depends, Security
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 from typing import List, Optional
+from contextlib import asynccontextmanager
 import uvicorn
 import datetime
 import os
+import logging
+import logging.handlers
+import queue
 
-app = FastAPI(title="Jules Cloud Bridge")
+# Configure Logging
+log_queue = queue.Queue(-1)
+queue_handler = logging.handlers.QueueHandler(log_queue)
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
+listener = logging.handlers.QueueListener(log_queue, handler)
+
+logger = logging.getLogger("jules-bridge")
+logger.addHandler(queue_handler)
+logger.setLevel(logging.INFO)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Start the background log listener
+    listener.start()
+    yield
+    # Shutdown: Stop the background log listener
+    listener.stop()
+
+app = FastAPI(title="Jules Cloud Bridge", lifespan=lifespan)
 
 # Simple API Key Security
 API_KEY = os.getenv("JULES_BRIDGE_API_KEY", "default_secret_key")
@@ -46,7 +69,7 @@ async def root():
 @app.post("/ea/update", dependencies=[Depends(verify_api_key)])
 async def ea_update(data: TradingData):
     history.append(data)
-    print(f"[{data.time}] Received data for {data.symbol}: {data.price}")
+    logger.info(f"[{data.time}] Received data for {data.symbol}: {data.price}")
     return {"status": "received"}
 
 @app.get("/ea/signal", response_model=Optional[Signal], dependencies=[Depends(verify_api_key)])
@@ -66,5 +89,6 @@ async def get_history(limit: int = 10):
     return history[-limit:]
 
 if __name__ == "__main__":
-    print(f"Starting server with API_KEY: {API_KEY}")
+    masked_key = API_KEY[:3] + "*" * (len(API_KEY) - 3) if len(API_KEY) > 3 else "***"
+    logger.info(f"Starting server with API_KEY: {masked_key}")
     uvicorn.run(app, host="0.0.0.0", port=8000)
