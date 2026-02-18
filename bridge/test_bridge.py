@@ -1,9 +1,11 @@
+import os
 import requests
 import json
 import time
 
 BASE_URL = "http://localhost:8000"
-HEADERS = {"X-API-KEY": "default_secret_key"}
+API_KEY = os.getenv("JULES_BRIDGE_API_KEY", "default_secret_key")
+HEADERS = {"X-API-KEY": API_KEY}
 
 def test_bridge():
     # 1. Check root
