@@ -9,7 +9,9 @@ import os
 app = FastAPI(title="Jules Cloud Bridge")
 
 # Simple API Key Security
-API_KEY = os.getenv("JULES_BRIDGE_API_KEY", "default_secret_key")
+API_KEY = os.getenv("JULES_BRIDGE_API_KEY")
+if not API_KEY:
+    raise RuntimeError("JULES_BRIDGE_API_KEY environment variable is not set")
 api_key_header = APIKeyHeader(name="X-API-KEY")
 
 async def verify_api_key(api_key: str = Security(api_key_header)):

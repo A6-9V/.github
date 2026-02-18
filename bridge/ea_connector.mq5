@@ -12,7 +12,7 @@
 
 // Input parameters
 input string   InpServerUrl = "http://your-vps-ip:8000"; // Bridge Server URL
-input string   InpApiKey    = "default_secret_key";      // API Key for Security
+input string   InpApiKey    = "YOUR_API_KEY";      // API Key for Security
 input int      InpMagicNum  = 123456;                    // Magic Number
 
 // Global variables

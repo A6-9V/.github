@@ -16,7 +16,7 @@ This guide explains how to deploy the Jules Cloud Bridge on a VPS and connect it
     ```bash
     pip install fastapi uvicorn pydantic
     ```
-3.  Set the environment variable for your API Key (optional, defaults to `default_secret_key`):
+3.  Set the environment variable for your API Key (Required for security):
     ```bash
     export JULES_BRIDGE_API_KEY="your_secure_key"
     ```
