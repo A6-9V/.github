@@ -1,7 +1,8 @@
 from fastapi import FastAPI, Request, HTTPException, Depends, Security
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict
+from collections import deque, defaultdict
 import uvicorn
 import datetime
 import os
@@ -34,8 +35,10 @@ class Signal(BaseModel):
     take_profit: Optional[float] = None
 
 # In-memory storage
-signals_queue: List[Signal] = []
-history: List[TradingData] = []
+# Using defaultdict(deque) for O(1) signal retrieval by symbol
+signals_queue: Dict[str, deque] = defaultdict(deque)
+# Using deque with maxlen to prevent unbounded memory growth
+history: deque = deque(maxlen=1000)
 
 @app.get("/")
 async def root():
@@ -53,19 +56,34 @@ async def ea_update(data: TradingData):
 
 @app.get("/ea/signal", response_model=Optional[Signal], dependencies=[Depends(verify_api_key)])
 async def get_signal(symbol: str):
-    for i, signal in enumerate(signals_queue):
-        if signal.symbol == symbol:
-            return signals_queue.pop(i)
+    # Use .get() to avoid creating empty deques in the defaultdict for non-existent symbols
+    symbol_queue = signals_queue.get(symbol)
+    if symbol_queue:
+        return symbol_queue.popleft()
     return None
 
 @app.post("/agent/push-signal", dependencies=[Depends(verify_api_key)])
 async def push_signal(signal: Signal):
-    signals_queue.append(signal)
-    return {"status": "signal_queued", "queue_size": len(signals_queue)}
+    # O(1) append to the specific symbol's queue
+    signals_queue[signal.symbol].append(signal)
+
+    # Maintain backward compatibility by providing 'queue_size' (total across all symbols)
+    # while also providing specific symbol info.
+    total_size = sum(len(q) for q in signals_queue.values())
+
+    return {
+        "status": "signal_queued",
+        "symbol": signal.symbol,
+        "queue_size": total_size,
+        "symbol_queue_size": len(signals_queue[signal.symbol])
+    }
 
 @app.get("/agent/history", dependencies=[Depends(verify_api_key)])
 async def get_history(limit: int = 10):
-    return history[-limit:]
+    # deque doesn't support slicing, but converting to list for the last few items is efficient
+    # as history is capped at 1000 items.
+    history_list = list(history)
+    return history_list[-limit:]
 
 if __name__ == "__main__":
     print(f"Starting server with API_KEY: {API_KEY}")
