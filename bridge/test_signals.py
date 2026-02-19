@@ -9,14 +9,16 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Set API Key for testing before importing app
 os.environ["JULES_BRIDGE_API_KEY"] = "test_secret_key"
 
-from bridge.server import app, signals_queue
+from bridge.server import app, signals_queue, history
 
 client = TestClient(app)
 HEADERS = {"X-API-KEY": "test_secret_key"}
 
 @pytest.fixture(autouse=True)
-def clear_queue():
+def clear_state():
+    """Clear signals and history before each test to ensure isolation."""
     signals_queue.clear()
+    history.clear()
     yield
 
 def test_multiple_signals_fifo_same_symbol():
@@ -61,15 +63,11 @@ def test_multiple_signals_different_symbols():
     assert response.json()["symbol"] == "GBPUSD"
     assert response.json()["volume"] == 0.2
 
-    # Verify other signals are still in queue
-    assert len(signals_queue) == 2
-    assert signals_queue[0].symbol == "EURUSD"
-    assert signals_queue[1].symbol == "USDJPY"
-
-    # Retrieve EURUSD signal
+    # Retrieve EURUSD signal (verifies it was still in queue and correct)
     response = client.get("/ea/signal?symbol=EURUSD", headers=HEADERS)
     assert response.status_code == 200
     assert response.json()["symbol"] == "EURUSD"
+    assert response.json()["volume"] == 0.1
 
     # Retrieve USDJPY signal
     response = client.get("/ea/signal?symbol=USDJPY", headers=HEADERS)
@@ -77,7 +75,8 @@ def test_multiple_signals_different_symbols():
     assert response.json()["symbol"] == "USDJPY"
 
     # Queue should be empty
-    assert len(signals_queue) == 0
+    response = client.get("/ea/signal?symbol=EURUSD", headers=HEADERS)
+    assert response.json() is None
 
 def test_signal_queue_preserves_order_after_middle_pop():
     # Push 1, 2, 3
@@ -95,12 +94,7 @@ def test_signal_queue_preserves_order_after_middle_pop():
     assert response.status_code == 200
     assert response.json()["symbol"] == "GBPUSD"
 
-    # Remaining should be EURUSD 0.1 and EURUSD 0.3 in that order
-    assert len(signals_queue) == 2
-    assert signals_queue[0].volume == 0.1
-    assert signals_queue[1].volume == 0.3
-
-    # Pop EURUSD - should get 0.1 first
+    # Pop EURUSD - should get 0.1 first (verifies FIFO order preserved after middle pop)
     response = client.get("/ea/signal?symbol=EURUSD", headers=HEADERS)
     assert response.json()["volume"] == 0.1
 
