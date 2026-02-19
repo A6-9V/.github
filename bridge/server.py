@@ -1,7 +1,8 @@
 from fastapi import FastAPI, Request, HTTPException, Depends, Security
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict
+from collections import deque, defaultdict
 import uvicorn
 import datetime
 import os
@@ -34,8 +35,10 @@ class Signal(BaseModel):
     take_profit: Optional[float] = None
 
 # In-memory storage
-signals_queue: List[Signal] = []
-history: List[TradingData] = []
+# Optimized signals_queue to Dict[str, deque] for O(1) symbol-based retrieval
+signals_queue: Dict[str, deque] = defaultdict(deque)
+# Optimized history with maxlen to prevent memory leak and maintain performance
+history: deque = deque(maxlen=10000)
 
 @app.get("/")
 async def root():
@@ -53,19 +56,22 @@ async def ea_update(data: TradingData):
 
 @app.get("/ea/signal", response_model=Optional[Signal], dependencies=[Depends(verify_api_key)])
 async def get_signal(symbol: str):
-    for i, signal in enumerate(signals_queue):
-        if signal.symbol == symbol:
-            return signals_queue.pop(i)
+    # O(1) retrieval by symbol
+    if signals_queue[symbol]:
+        return signals_queue[symbol].popleft()
     return None
 
 @app.post("/agent/push-signal", dependencies=[Depends(verify_api_key)])
 async def push_signal(signal: Signal):
-    signals_queue.append(signal)
-    return {"status": "signal_queued", "queue_size": len(signals_queue)}
+    signals_queue[signal.symbol].append(signal)
+    # Total queue size across all symbols
+    total_size = sum(len(q) for q in signals_queue.values())
+    return {"status": "signal_queued", "queue_size": total_size}
 
 @app.get("/agent/history", dependencies=[Depends(verify_api_key)])
 async def get_history(limit: int = 10):
-    return history[-limit:]
+    # Convert deque to list for slicing and returning as JSON
+    return list(history)[-limit:]
 
 if __name__ == "__main__":
     print(f"Starting server with API_KEY: {API_KEY}")
