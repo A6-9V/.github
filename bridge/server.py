@@ -1,7 +1,8 @@
 from fastapi import FastAPI, Request, HTTPException, Depends, Security
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict, Deque
+from collections import deque
 import uvicorn
 import datetime
 import os
@@ -34,7 +35,8 @@ class Signal(BaseModel):
     take_profit: Optional[float] = None
 
 # In-memory storage
-signals_queue: List[Signal] = []
+signals_queue: Dict[str, Deque[Signal]] = {}
+total_signals_count = 0
 history: List[TradingData] = []
 
 @app.get("/")
@@ -53,15 +55,24 @@ async def ea_update(data: TradingData):
 
 @app.get("/ea/signal", response_model=Optional[Signal], dependencies=[Depends(verify_api_key)])
 async def get_signal(symbol: str):
-    for i, signal in enumerate(signals_queue):
-        if signal.symbol == symbol:
-            return signals_queue.pop(i)
+    global total_signals_count
+    if symbol in signals_queue and signals_queue[symbol]:
+        total_signals_count -= 1
+        signal = signals_queue[symbol].popleft()
+        # Clean up empty deque to save memory
+        if not signals_queue[symbol]:
+            del signals_queue[symbol]
+        return signal
     return None
 
 @app.post("/agent/push-signal", dependencies=[Depends(verify_api_key)])
 async def push_signal(signal: Signal):
-    signals_queue.append(signal)
-    return {"status": "signal_queued", "queue_size": len(signals_queue)}
+    global total_signals_count
+    if signal.symbol not in signals_queue:
+        signals_queue[signal.symbol] = deque()
+    signals_queue[signal.symbol].append(signal)
+    total_signals_count += 1
+    return {"status": "signal_queued", "queue_size": total_signals_count}
 
 @app.get("/agent/history", dependencies=[Depends(verify_api_key)])
 async def get_history(limit: int = 10):
