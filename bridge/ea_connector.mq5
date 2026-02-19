@@ -17,6 +17,7 @@ input int      InpMagicNum  = 123456;                    // Magic Number
 
 // Global variables
 CTrade         trade;
+int            rsi_handle = INVALID_HANDLE;
 
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
@@ -28,6 +29,14 @@ int OnInit()
 
    trade.SetExpertMagicNumber(InpMagicNum);
 
+   // Initialize RSI indicator handle
+   rsi_handle = iRSI(_Symbol, _Period, 14, PRICE_CLOSE);
+   if(rsi_handle == INVALID_HANDLE)
+   {
+      Print("Failed to create RSI handle: ", GetLastError());
+      return(INIT_FAILED);
+   }
+
    return(INIT_SUCCEEDED);
 }
 
@@ -37,6 +46,10 @@ int OnInit()
 void OnDeinit(const int reason)
 {
    Print("Jules Connector EA deinitialized.");
+
+   // Release RSI indicator handle
+   if(rsi_handle != INVALID_HANDLE)
+      IndicatorRelease(rsi_handle);
 }
 
 //+------------------------------------------------------------------+
@@ -71,12 +84,25 @@ void SendMarketData()
    string method = "POST";
    string headers = "Content-Type: application/json\r\n" + "X-API-KEY: " + InpApiKey + "\r\n";
 
+   double rsi_buffer[];
+   ArraySetAsSeries(rsi_buffer, true);
+   double rsi_value = 0;
+
+   if(CopyBuffer(rsi_handle, 0, 0, 1, rsi_buffer) > 0)
+   {
+      rsi_value = rsi_buffer[0];
+   }
+   else
+   {
+      Print("Failed to copy RSI data: ", GetLastError());
+   }
+
    string body = StringFormat(
       "{\"symbol\":\"%s\", \"price\":%f, \"time\":\"%s\", \"indicator_value\":%f}",
       _Symbol,
       SymbolInfoDouble(_Symbol, SYMBOL_BID),
       TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS),
-      iRSI(_Symbol, _Period, 14, PRICE_CLOSE)
+      rsi_value
    );
 
    char data[];
