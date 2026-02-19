@@ -51,8 +51,19 @@ def test_bridge():
     res = requests.get(BASE_URL + "/agent/history", headers={"X-API-KEY": "wrong_key"})
     print(f"Status: {res.status_code}, Response: {res.json()}")
 
+def test_history():
+    print("\nTesting history retrieval...")
+    res = requests.get(BASE_URL + "/agent/history?limit=5", headers=HEADERS)
+    history = res.json()
+    print(f"History length: {len(history)}")
+    if len(history) > 0:
+        print(f"Latest entry: {history[-1]}")
+    else:
+        print("History is empty!")
+
 if __name__ == "__main__":
     try:
         test_bridge()
+        test_history()
     except Exception as e:
         print(f"Error: {e}. Is the server running?")
