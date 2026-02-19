@@ -3,7 +3,8 @@ import requests
 import json
 import time
 
-BASE_URL = "http://localhost:8000"
+port = os.getenv("PORT", "8000")
+BASE_URL = f"http://localhost:{port}"
 API_KEY = os.getenv("JULES_BRIDGE_API_KEY", "default_secret_key")
 HEADERS = {"X-API-KEY": API_KEY}
 

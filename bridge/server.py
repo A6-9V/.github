@@ -68,5 +68,7 @@ async def get_history(limit: int = 10):
     return history[-limit:]
 
 if __name__ == "__main__":
-    print(f"Starting server with API_KEY: {API_KEY}")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = int(os.environ.get("PORT", 8000))
+    masked_key = f"{API_KEY[:4]}...{API_KEY[-4:]}" if len(API_KEY) > 8 else "****"
+    print(f"Starting server with API_KEY: {masked_key} on port {port}")
+    uvicorn.run(app, host="0.0.0.0", port=port)
