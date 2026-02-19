@@ -1,7 +1,5 @@
 import os
 import requests
-import json
-import time
 
 BASE_URL = "http://localhost:8000"
 API_KEY = os.getenv("JULES_BRIDGE_API_KEY", "default_secret_key")
