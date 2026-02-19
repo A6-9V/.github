@@ -65,6 +65,7 @@ async def push_signal(signal: Signal):
 
 @app.get("/agent/history", dependencies=[Depends(verify_api_key)])
 async def get_history(limit: int = 10):
+    if limit <= 0: return []
     return history[-limit:]
 
 if __name__ == "__main__":
