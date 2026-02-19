@@ -5,6 +5,7 @@ from typing import List, Optional
 import uvicorn
 import datetime
 import os
+import secrets
 
 app = FastAPI(title="Jules Cloud Bridge")
 
@@ -15,7 +16,7 @@ if not API_KEY:
 api_key_header = APIKeyHeader(name="X-API-KEY")
 
 async def verify_api_key(api_key: str = Security(api_key_header)):
-    if api_key != API_KEY:
+    if not secrets.compare_digest(api_key, API_KEY):
         raise HTTPException(status_code=403, detail="Invalid API Key")
     return api_key
 
@@ -68,5 +69,5 @@ async def get_history(limit: int = 10):
     return history[-limit:]
 
 if __name__ == "__main__":
-    print(f"Starting server with API_KEY: {API_KEY}")
+    print("Starting server...")
     uvicorn.run(app, host="0.0.0.0", port=8000)

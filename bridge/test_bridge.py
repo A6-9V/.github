@@ -2,9 +2,13 @@ import os
 import requests
 import json
 import time
+import sys
 
 BASE_URL = "http://localhost:8000"
-API_KEY = os.getenv("JULES_BRIDGE_API_KEY", "default_secret_key")
+API_KEY = os.getenv("JULES_BRIDGE_API_KEY")
+if not API_KEY:
+    print("Error: JULES_BRIDGE_API_KEY environment variable is not set")
+    sys.exit(1)
 HEADERS = {"X-API-KEY": API_KEY}
 
 def test_bridge():
