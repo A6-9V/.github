@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request, HTTPException, Depends, Security
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
+from collections import deque
 from typing import List, Optional
 import uvicorn
 import datetime
@@ -35,7 +36,7 @@ class Signal(BaseModel):
 
 # In-memory storage
 signals_queue: List[Signal] = []
-history: List[TradingData] = []
+history = deque(maxlen=1000)
 
 @app.get("/")
 async def root():
@@ -65,7 +66,7 @@ async def push_signal(signal: Signal):
 
 @app.get("/agent/history", dependencies=[Depends(verify_api_key)])
 async def get_history(limit: int = 10):
-    return history[-limit:]
+    return list(history)[-limit:]
 
 if __name__ == "__main__":
     print(f"Starting server with API_KEY: {API_KEY}")
