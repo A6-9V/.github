@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request, HTTPException, Depends, Security
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 from typing import List, Optional
+from collections import deque
 import uvicorn
 import datetime
 import os
@@ -33,9 +34,13 @@ class Signal(BaseModel):
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
 
+# Configuration
+MAX_HISTORY_SIZE = int(os.getenv("MAX_HISTORY_SIZE", "1000"))
+MAX_SIGNALS_SIZE = int(os.getenv("MAX_SIGNALS_SIZE", "100"))
+
 # In-memory storage
-signals_queue: List[Signal] = []
-history: List[TradingData] = []
+signals_queue: deque[Signal] = deque(maxlen=MAX_SIGNALS_SIZE)
+history: deque[TradingData] = deque(maxlen=MAX_HISTORY_SIZE)
 
 @app.get("/")
 async def root():
@@ -55,7 +60,9 @@ async def ea_update(data: TradingData):
 async def get_signal(symbol: str):
     for i, signal in enumerate(signals_queue):
         if signal.symbol == symbol:
-            return signals_queue.pop(i)
+            result = signals_queue[i]
+            del signals_queue[i]
+            return result
     return None
 
 @app.post("/agent/push-signal", dependencies=[Depends(verify_api_key)])
@@ -65,7 +72,9 @@ async def push_signal(signal: Signal):
 
 @app.get("/agent/history", dependencies=[Depends(verify_api_key)])
 async def get_history(limit: int = 10):
-    return history[-limit:]
+    # Convert to list for slicing support
+    history_list = list(history)
+    return history_list[-limit:]
 
 if __name__ == "__main__":
     print(f"Starting server with API_KEY: {API_KEY}")
