@@ -1,7 +1,8 @@
 from fastapi import FastAPI, Request, HTTPException, Depends, Security
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, DefaultDict, Deque
+from collections import deque, defaultdict
 import uvicorn
 import datetime
 import os
@@ -34,8 +35,10 @@ class Signal(BaseModel):
     take_profit: Optional[float] = None
 
 # In-memory storage
-signals_queue: List[Signal] = []
-history: List[TradingData] = []
+# signals_queue maps symbol to a deque of signals for O(1) lookup
+signals_queue: DefaultDict[str, Deque[Signal]] = defaultdict(deque)
+# history uses a deque with maxlen to prevent memory leaks
+history: Deque[TradingData] = deque(maxlen=1000)
 
 @app.get("/")
 async def root():
@@ -53,19 +56,21 @@ async def ea_update(data: TradingData):
 
 @app.get("/ea/signal", response_model=Optional[Signal], dependencies=[Depends(verify_api_key)])
 async def get_signal(symbol: str):
-    for i, signal in enumerate(signals_queue):
-        if signal.symbol == symbol:
-            return signals_queue.pop(i)
+    # Optimized O(1) lookup using defaultdict of deques
+    if symbol in signals_queue and signals_queue[symbol]:
+        return signals_queue[symbol].popleft()
     return None
 
 @app.post("/agent/push-signal", dependencies=[Depends(verify_api_key)])
 async def push_signal(signal: Signal):
-    signals_queue.append(signal)
-    return {"status": "signal_queued", "queue_size": len(signals_queue)}
+    # Optimized append to symbol-specific deque
+    signals_queue[signal.symbol].append(signal)
+    return {"status": "signal_queued", "queue_size": len(signals_queue[signal.symbol])}
 
 @app.get("/agent/history", dependencies=[Depends(verify_api_key)])
 async def get_history(limit: int = 10):
-    return history[-limit:]
+    # Convert deque to list for slicing since deques do not support it
+    return list(history)[-limit:]
 
 if __name__ == "__main__":
     print(f"Starting server with API_KEY: {API_KEY}")
