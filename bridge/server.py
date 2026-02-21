@@ -1,10 +1,11 @@
 from fastapi import FastAPI, Request, HTTPException, Depends, Security
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Deque, Dict
 import uvicorn
 import datetime
 import os
+from collections import deque, defaultdict
 
 app = FastAPI(title="Jules Cloud Bridge")
 
@@ -34,8 +35,10 @@ class Signal(BaseModel):
     take_profit: Optional[float] = None
 
 # In-memory storage
-signals_queue: List[Signal] = []
-history: List[TradingData] = []
+# Using deque with maxlen to prevent memory leaks and ensure O(1) appends
+history: Deque[TradingData] = deque(maxlen=1000)
+# Using defaultdict of deques for O(1) signal lookup and removal by symbol
+signals_by_symbol: Dict[str, Deque[Signal]] = defaultdict(deque)
 
 @app.get("/")
 async def root():
@@ -53,19 +56,25 @@ async def ea_update(data: TradingData):
 
 @app.get("/ea/signal", response_model=Optional[Signal], dependencies=[Depends(verify_api_key)])
 async def get_signal(symbol: str):
-    for i, signal in enumerate(signals_queue):
-        if signal.symbol == symbol:
-            return signals_queue.pop(i)
+    # O(1) retrieval and removal
+    if symbol in signals_by_symbol and signals_by_symbol[symbol]:
+        return signals_by_symbol[symbol].popleft()
     return None
 
 @app.post("/agent/push-signal", dependencies=[Depends(verify_api_key)])
 async def push_signal(signal: Signal):
-    signals_queue.append(signal)
-    return {"status": "signal_queued", "queue_size": len(signals_queue)}
+    # O(1) append
+    signals_by_symbol[signal.symbol].append(signal)
+    queue_size = sum(len(q) for q in signals_by_symbol.values())
+    return {"status": "signal_queued", "queue_size": queue_size}
 
 @app.get("/agent/history", dependencies=[Depends(verify_api_key)])
 async def get_history(limit: int = 10):
-    return history[-limit:]
+    # Slicing a deque involves converting to list first if we want negative slicing
+    # But since maxlen is small (1000), this is efficient enough.
+    # Alternatively, we could use itertools.islice.
+    h_list = list(history)
+    return h_list[-limit:]
 
 if __name__ == "__main__":
     print(f"Starting server with API_KEY: {API_KEY}")
