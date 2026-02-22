@@ -1,12 +1,27 @@
 stages:
+  - build
   - test
+
+variables:
+  REGISTRY_IMAGE: "registry.gitlab.com/meizhuxie4/a6-9v"
+  JULES_BRIDGE_API_KEY: ${CI_API_KEY:-"test_secret_key"}
+
+build_job:
+  stage: build
+  image: docker:20.10.16
+  services:
+    - docker:20.10.16-dind
+  script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD registry.gitlab.com
+    - docker build -t $REGISTRY_IMAGE .
+    - docker push $REGISTRY_IMAGE
+  only:
+    - merge_requests
+    - main
 
 test_job:
   stage: test
   image: python:3.9
-  variables:
-    # Use a CI/CD variable for production: Settings > CI/CD > Variables
-    JULES_BRIDGE_API_KEY: ${CI_API_KEY:-"test_secret_key"}
   script:
     - pip install -r requirements.txt
     - python bridge/server.py &
