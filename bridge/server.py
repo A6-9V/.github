@@ -1,7 +1,9 @@
 from fastapi import FastAPI, Request, HTTPException, Depends, Security
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict
+from collections import deque, defaultdict
+import itertools
 import uvicorn
 import datetime
 import os
@@ -33,9 +35,12 @@ class Signal(BaseModel):
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
 
-# In-memory storage
-signals_queue: List[Signal] = []
-history: List[TradingData] = []
+# In-memory storage optimized for performance
+# history: deque for O(1) append and O(limit) slice access
+history: deque = deque(maxlen=10000)
+# signals_by_symbol: defaultdict(deque) for O(1) symbol lookup and O(1) popleft
+signals_by_symbol: Dict[str, deque] = defaultdict(deque)
+signals_count: int = 0
 
 @app.get("/")
 async def root():
@@ -53,19 +58,23 @@ async def ea_update(data: TradingData):
 
 @app.get("/ea/signal", response_model=Optional[Signal], dependencies=[Depends(verify_api_key)])
 async def get_signal(symbol: str):
-    for i, signal in enumerate(signals_queue):
-        if signal.symbol == symbol:
-            return signals_queue.pop(i)
+    global signals_count
+    if signals_by_symbol[symbol]:
+        signals_count -= 1
+        return signals_by_symbol[symbol].popleft()
     return None
 
 @app.post("/agent/push-signal", dependencies=[Depends(verify_api_key)])
 async def push_signal(signal: Signal):
-    signals_queue.append(signal)
-    return {"status": "signal_queued", "queue_size": len(signals_queue)}
+    global signals_count
+    signals_by_symbol[signal.symbol].append(signal)
+    signals_count += 1
+    return {"status": "signal_queued", "queue_size": signals_count}
 
 @app.get("/agent/history", dependencies=[Depends(verify_api_key)])
 async def get_history(limit: int = 10):
-    return history[-limit:]
+    # Optimized for O(limit) access
+    return list(itertools.islice(reversed(history), limit))[::-1]
 
 if __name__ == "__main__":
     print(f"Starting server with API_KEY: {API_KEY}")

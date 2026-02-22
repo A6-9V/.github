@@ -1,0 +1,17 @@
+stages:
+  - test
+
+test_job:
+  stage: test
+  image: python:3.9
+  variables:
+    # Use a CI/CD variable for production: Settings > CI/CD > Variables
+    JULES_BRIDGE_API_KEY: ${CI_API_KEY:-"test_secret_key"}
+  script:
+    - pip install -r requirements.txt
+    - python bridge/server.py &
+    - sleep 5
+    - python bridge/test_bridge.py
+  only:
+    - merge_requests
+    - main
