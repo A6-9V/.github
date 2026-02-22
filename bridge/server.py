@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request, HTTPException, Depends, Security
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 from typing import List, Optional
+from collections import deque, defaultdict
 import uvicorn
 import datetime
 import os
@@ -34,8 +35,12 @@ class Signal(BaseModel):
     take_profit: Optional[float] = None
 
 # In-memory storage
-signals_queue: List[Signal] = []
-history: List[TradingData] = []
+# Using defaultdict(deque) for O(1) lookup and pop from signal queue by symbol
+signals_queue: defaultdict = defaultdict(deque)
+# Track total number of signals across all symbols for O(1) size reporting
+signals_count: int = 0
+# Using deque with maxlen to prevent memory leaks from unbounded history growth
+history: deque = deque(maxlen=10000)
 
 @app.get("/")
 async def root():
@@ -53,19 +58,29 @@ async def ea_update(data: TradingData):
 
 @app.get("/ea/signal", response_model=Optional[Signal], dependencies=[Depends(verify_api_key)])
 async def get_signal(symbol: str):
-    for i, signal in enumerate(signals_queue):
-        if signal.symbol == symbol:
-            return signals_queue.pop(i)
+    global signals_count
+    # O(1) lookup and O(1) pop from the left of the deque
+    if signals_queue.get(symbol) and len(signals_queue[symbol]) > 0:
+        signal = signals_queue[symbol].popleft()
+        signals_count -= 1
+        return signal
     return None
 
 @app.post("/agent/push-signal", dependencies=[Depends(verify_api_key)])
 async def push_signal(signal: Signal):
-    signals_queue.append(signal)
-    return {"status": "signal_queued", "queue_size": len(signals_queue)}
+    global signals_count
+    # O(1) append to the specific symbol's queue
+    signals_queue[signal.symbol].append(signal)
+    signals_count += 1
+    return {"status": "signal_queued", "queue_size": signals_count}
 
 @app.get("/agent/history", dependencies=[Depends(verify_api_key)])
 async def get_history(limit: int = 10):
-    return history[-limit:]
+    # Efficiently get the last 'limit' items from the deque without full conversion to list
+    # deque indexed access is O(1) near the ends
+    h_len = len(history)
+    start = max(0, h_len - limit)
+    return [history[i] for i in range(start, h_len)]
 
 if __name__ == "__main__":
     print(f"Starting server with API_KEY: {API_KEY}")
